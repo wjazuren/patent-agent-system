@@ -1,0 +1,26 @@
+# ===== 核心框架 =====
+fastapi>=0.104.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
+
+# ===== 多Agent调度 =====
+langgraph>=0.1.0
+langchain>=0.3.0
+langchain-openai>=0.2.0
+
+# ===== 数据模型 =====
+pydantic>=2.5.0
+pydantic-settings>=2.1.0
+
+# ===== 向量数据库 =====
+chromadb>=0.4.0
+
+# ===== 缓存 =====
+redis>=5.0.0
+
+# ===== 配置与工具 =====
+python-dotenv>=1.0.0
+httpx>=0.25.0
+
+# ===== 日志 =====
+# Python标准库logging，无需额外安装

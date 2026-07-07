@@ -1,0 +1,49 @@
+/**
+ * SCSS 变量定义
+ * 统一管理颜色、间距、字体等，方便主题切换和维护
+ */
+
+// ========== 主题色 ==========
+$primary-color: #409eff;        // 主色调（Element Plus 默认蓝）
+$success-color: #67c23a;        // 成功色
+$warning-color: #e6a23c;        // 警告色
+$danger-color: #f56c6c;         // 危险色
+$info-color: #909399;           // 信息色
+
+// 风险等级颜色
+$risk-low: #67c23a;             // 低风险 - 绿色
+$risk-medium: #e6a23c;          // 中风险 - 黄色
+$risk-high: #f56c6c;            // 高风险 - 红色
+
+// ========== 文本颜色 ==========
+$text-primary: #303133;         // 主要文字
+$text-secondary: #606266;       // 次要文字
+$text-placeholder: #909399;     // 占位文字
+$text-disabled: #c0c4cc;        // 禁用文字
+
+// ========== 背景色 ==========
+$bg-page: #f5f7fa;              // 页面背景
+$bg-container: #ffffff;         // 容器背景
+$bg-code: #f5f7fa;              // 代码块背景
+$bg-table-header: #fafafa;      // 表头背景
+$bg-quote: #ecf5ff;             // 引用块背景
+
+// ========== 边框颜色 ==========
+$border-color: #dcdfe6;         // 边框色
+$border-color-light: #e4e7ed;   // 浅边框色
+$border-color-lighter: #ebeef5; // 更浅边框色
+
+// ========== 布局尺寸 ==========
+$header-height: 60px;           // 顶部栏高度
+$sidebar-width: 220px;          // 侧边栏宽度
+$content-padding: 20px;         // 内容区内边距
+
+// ========== 圆角 ==========
+$border-radius-sm: 4px;         // 小圆角
+$border-radius-md: 6px;         // 中圆角
+$border-radius-lg: 8px;         // 大圆角
+
+// ========== 阴影 ==========
+$shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+$shadow-md: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+$shadow-lg: 0 4px 20px 0 rgba(0, 0, 0, 0.12);
