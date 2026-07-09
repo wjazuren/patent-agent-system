@@ -131,6 +131,19 @@ class ComplianceReport(BaseModel):
 
 
 # ==================== 评审阶段模型 ====================
+class ModificationItem(BaseModel):
+    """单条结构化修改意见，支持全链路追踪与跨章节关联"""
+    issue_id: str = Field(..., description="问题唯一标识，格式如issue_001，用于跨轮次追踪状态")
+    section: str = Field(..., description="主责任章节，对应PatentDocket字段名")
+    affected_sections: List[str] = Field(default_factory=list, description="受影响的所有关联章节，修改时需同步更新")
+    issue_type: str = Field(..., description="问题类型：format / sufficiency / novelty / logic")
+    severity: str = Field(..., description="问题等级：minor / major / critical")
+    description: str = Field(..., description="具体问题描述")
+    suggestion: str = Field(..., description="明确的修改方向")
+    status: str = Field(default="pending", description="问题状态：pending待修改 / resolved已解决 / partial部分解决")
+
+
+
 class ReviewResult(BaseModel):
     """质量评审结果：由评审Agent输出"""
     # 评审结论：pass / reject
@@ -143,7 +156,7 @@ class ReviewResult(BaseModel):
     compliance_score: float = Field(default=0, description="合规性得分")
     logic_score: float = Field(default=0, description="逻辑完整性得分")
     # 修改意见列表
-    modification_suggestions: List[str] = Field(default_factory=list, description="修改意见列表")
+    modification_items: List[ModificationItem] = Field(default_factory=list, description="修改意见列表")
     # 需要打回修改的Agent：writer / compliance / search
     target_agent: Optional[str] = Field(default=None, description="需要打回修改的Agent")
     # 评审说明
@@ -231,3 +244,5 @@ class PatentState(BaseModel):
     process_logs: List[str] = Field(default_factory=list, description="流程日志")
     # 错误信息
     error_message: Optional[str] = Field(default=None, description="错误信息")
+    # 新增
+    history_scores:List[float] = Field(default_factory=list, description="历史评审分数列表")

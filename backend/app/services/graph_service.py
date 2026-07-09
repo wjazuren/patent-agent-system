@@ -118,18 +118,19 @@ def node_writer(state: dict) -> dict:
     if isinstance(prior_art, dict):
         prior_art = PriorArtReport(**prior_art)
 
+    # 取出已有初稿和修改意见
+    existing_docket = state.draft_docket
+    if existing_docket and isinstance(existing_docket,dict):
+      existing_docket = PatentDocket(**existing_docket)
     # 如果是迭代修改，从评审结果中提取修改提示
     review_result = state.review_result
-    iteration_hint = ""
+    modification_items = None
     if review_result:
         if isinstance(review_result, dict):
             review_result = ReviewResult(**review_result)
-        if review_result.modification_suggestions:
-            iteration_hint = "请根据以下修改意见调整交底书：\n" + "\n".join(
-                f"- {s}" for s in review_result.modification_suggestions
-            )
+        modification_items = review_result.modification_items
 
-    docket, usage = write_docket_agent(requirement, prior_art, iteration_hint)
+    docket, usage = write_docket_agent(requirement, prior_art, existing_docket=existing_docket,modification_items=modification_items)
 
     if docket is None:
         # 撰写失败，记录错误
@@ -204,8 +205,15 @@ def node_review(state: dict) -> dict:
     if isinstance(compliance, dict):
         compliance = ComplianceReport(**compliance)
 
+    last_review = state.review_result
+    last_mod_items = None
+    if last_review:
+        if isinstance(last_review, dict):
+            last_review = ReviewResult(**last_review)
+        last_mod_items = last_review.modification_items
+
     review_result, usage = review_quality_agent(
-        docket, prior_art, compliance, iteration_count
+        docket, prior_art, compliance, iteration_count,last_modification_items=last_mod_items
     )
 
     token_usage = state.token_usage
@@ -213,6 +221,11 @@ def node_review(state: dict) -> dict:
         token_usage = TokenUsage(**token_usage)
     token_usage.review_prompt += usage.get("prompt_tokens", 0)
     token_usage.review_completion += usage.get("completion_tokens", 0)
+
+    # 更新历史分数
+    history_score = state.history_scores
+    if isinstance(history_score,list):
+      history_score.append(review_result.overall_score)
 
     logs = state.process_logs
     logs.append(
@@ -223,6 +236,7 @@ def node_review(state: dict) -> dict:
     return {
         "review_result": review_result,
         "iteration_count": iteration_count,
+        "history_scores": history_score,  # 添加历史分数"
         "token_usage": token_usage,
         "process_logs": logs,
     }
@@ -285,6 +299,16 @@ def route_after_review(state: dict) -> str:
         logger.info("评审通过，进入输出环节")
         return "output"
 
+
+    # 新增，有效性检测
+    history_score = state.history_scores
+    if len(history_score) >= 2:
+      last_gain = history_score[-1] - history_score[-2]
+      if last_gain < 5.0:
+        logger.info("连续两轮提升低于5.0，判定无效迭代，强制通过")
+        review_result.conclusion = "pass"
+        review_result.review_comment += "（迭代收敛停滞，强制通过，建议人工优化）"
+        return "output"
     # 打回修改
     target = review_result.target_agent
     logger.info("评审打回，目标: %s", target)

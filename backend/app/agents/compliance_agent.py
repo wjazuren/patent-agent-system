@@ -21,6 +21,7 @@ from typing import Tuple
 from app.models.schemas import ComplianceIssue, ComplianceReport, PatentDocket
 from app.tools.llm_tool import call_llm_structured
 from app.tools.rag_tool import search_rules
+from app.tools.rating_rules import calculate_compliance_score, judge_compliance_pass
 
 logger = logging.getLogger(__name__)
 
@@ -192,15 +193,15 @@ def check_compliance_agent(
             all_issues.append(issue)
             seen_descriptions.add(issue.description)
 
-    # 判断是否通过：没有critical级问题且major级不超过2个
-    critical_count = sum(1 for i in all_issues if i.severity == "critical")
-    major_count = sum(1 for i in all_issues if i.severity == "major")
-    is_passed = critical_count == 0 and major_count <= 2
+    # 判断是否通过：没有critical级问题且major级不超过2个,7.8
+    is_passed = judge_compliance_pass(all_issues)
+    format_score = calculate_compliance_score(all_issues)
+    
 
     final_report = ComplianceReport(
         is_passed=is_passed,
         issues=all_issues,
-        format_score=llm_result.format_score,
+        format_score=format_score,
         sufficiency_score=llm_result.sufficiency_score,
         overall_comment=llm_result.overall_comment,
     )

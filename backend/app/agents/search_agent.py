@@ -30,6 +30,7 @@ logger = logging.getLogger(__name__)
 def _generate_cache_key(keywords: List[str]) -> str:
     """生成检索缓存key，用关键词哈希避免key过长"""
     keyword_str = "|".join(sorted(keywords))
+    # 32位16进制哈希值
     hash_val = hashlib.md5(keyword_str.encode()).hexdigest()
     return f"patent_search:{hash_val}"
 

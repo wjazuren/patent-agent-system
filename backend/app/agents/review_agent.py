@@ -16,7 +16,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Tuple
+from typing import Tuple,Optional,List
 
 from app.config import MAX_ITERATION_COUNT
 from app.models.schemas import (
@@ -24,55 +24,54 @@ from app.models.schemas import (
     PatentDocket,
     PriorArtReport,
     ReviewResult,
+    ModificationItem,
 )
 from app.tools.llm_tool import call_llm_structured
+from app.tools.rating_rules import calculate_compliance_score
+
 
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """
 你是一名资深专利质检经理，负责对专利交底书进行最终质量评审。
-
 你的任务是：综合评估交底书的质量，决定是否通过，或打回修改。
 
-评审维度：
-1. 新颖性评估（25分）：
-   - 结合现有技术检索报告，评估发明的新颖性
-   - 是否突出了与现有技术的区别特征
-   - 高风险专利是否有针对性的规避设计
+评审规则（严格遵守）：
+1. 若存在上一轮问题清单，必须先逐一复核上一轮问题的解决情况，标注每个问题的状态（resolved/partial/pending）
+2. 上一轮已完全解决的问题，本轮不得重复扣分
+3. 打分必须与上一轮保持同一尺度，不得突然收紧或放宽标准
+4. 新发现的问题按严重等级正常扣分
+5. 每个问题必须分配唯一的issue_id，格式如"issue_001"
+6. 每个问题必须标注所有受影响的章节affected_sections，不能只写主章节
 
-2. 撰写质量（25分）：
-   - 语言是否专业、严谨、符合专利撰写规范
-   - 技术方案描述是否清晰、完整
-   - 有益效果是否有理有据
-
-3. 合规性（25分）：
-   - 格式是否规范，章节是否完整
-   - 公开是否充分
-   - 权利要求是否清楚、简要
-
-4. 逻辑完整性（25分）：
-   - 技术问题、技术方案、有益效果是否对应
-   - 整体逻辑是否自洽
-   - 具体实施方式是否支持权利要求
+评审维度（各25分）：
+1. 新颖性评估：结合现有技术检索报告，评估发明的新颖性，是否突出区别特征
+2. 撰写质量：语言专业严谨，技术方案清晰完整，有益效果有理有据
+3. 合规性：格式规范，公开充分，权利要求清楚简要
+4. 逻辑完整性：技术问题、方案、效果对应，整体逻辑自洽
 
 输出要求：
-必须输出一个严格的JSON对象，包含以下字段：
-- conclusion: 评审结论，pass（通过）或 reject（打回修改）
+必须输出严格JSON对象，包含以下字段：
+- conclusion: pass / reject
 - overall_score: 整体评分，0-100
-- novelty_score: 新颖性得分，0-25
-- writing_score: 撰写质量得分，0-25
-- compliance_score: 合规性得分，0-25
-- logic_score: 逻辑完整性得分，0-25
-- modification_suggestions: 修改意见数组，列出具体需要修改的地方
-- target_agent: 需要打回修改的Agent，writer（撰写Agent）或 compliance（合规Agent），通过则为null
+- novelty_score: 0-25
+- writing_score: 0-25
+- compliance_score: 0-25
+- logic_score: 0-25
+- last_round_review: 上一轮问题复核说明，字符串
+- modification_items: 修改意见数组，每个元素包含：
+  - issue_id: 问题唯一ID
+  - section: 所属章节，取值只能是：invention_name, background_technology, technical_problem, technical_solution, beneficial_effects, detailed_implementation, claims_draft
+  - affected_sections: 受影响的所有关联章节数组,取值同section，必须为英文枚举值*
+  - issue_type: format / sufficiency / novelty / logic
+  - severity: minor / major / critical
+  - description: 问题描述
+  - suggestion: 修改建议
+  - status: pending
+- target_agent: writer / compliance / null
 - review_comment: 整体评审说明
 
-评审规则：
-- 总分>=80分 → 通过（pass）
-- 总分<80分 → 打回修改（reject）
-- 如果主要是撰写质量问题 → 打回writer
-- 如果主要是合规格式问题 → 打回compliance
-- 只返回JSON对象，不要输出任何解释文字
+只返回JSON对象，不要输出任何解释文字。
 """
 
 
@@ -81,6 +80,7 @@ def review_quality_agent(
     prior_art: PriorArtReport,
     compliance_report: ComplianceReport,
     iteration_count: int,
+    last_modification_items: Optional[List[ModificationItem]] = None,
 ) -> Tuple[ReviewResult, dict]:
     """
     质量评审主函数
@@ -90,6 +90,7 @@ def review_quality_agent(
         prior_art: 检索报告
         compliance_report: 合规报告
         iteration_count: 当前迭代次数
+        新增：传入上一轮修改意见，用于复查问题解决情况，校准打分尺度
 
     Returns:
         (评审结果, Token用量字典)
@@ -103,6 +104,7 @@ def review_quality_agent(
             f"[{i.severity}] {i.section}：{i.description} → 建议：{i.suggestion}"
             for i in compliance_report.issues
         ])
+        logger.info("合规问题：%s", issues_text)
     else:
         issues_text = "无合规问题"
 
@@ -113,6 +115,16 @@ def review_quality_agent(
             f"{i+1}. {p.title}（相似度{p.similarity_score:.1f}%）"
             for i, p in enumerate(prior_art.prior_patents[:3])
         ])
+
+    # 格式化上一轮问题清单（迭代轮次传入）
+    last_round_text = ""
+    if last_modification_items and iteration_count > 1:
+        last_round_text = "\n".join([
+            f"- [{item.issue_id}] {item.section}：{item.description}"
+            for item in last_modification_items
+        ])
+    else:
+        last_round_text = "首轮评审，无上一轮问题"
 
     human_prompt = f"""
 【交底书摘要】
@@ -131,12 +143,15 @@ def review_quality_agent(
 充分性得分：{compliance_report.sufficiency_score}/100
 问题清单：
 {issues_text}
-
+【上一轮问题清单（请先逐一复核）】
+{last_round_text}
 【当前迭代次数】
 第 {iteration_count} 轮（最多 {MAX_ITERATION_COUNT} 轮）
 
 请进行综合质量评审，给出评分和结论。
 如果分数低于80分，请明确指出需要修改的方向。
+请先复核上一轮问题的解决情况，再进行本轮综合评审。
+打分必须与上一轮保持同一尺度，已解决的问题不得重复扣分。
 """
 
     result, token_usage = call_llm_structured(
@@ -146,7 +161,6 @@ def review_quality_agent(
     )
 
     if result is None:
-        # 大模型失败，默认通过（保证流程不中断）
         logger.warning("质量评审失败，默认通过")
         fallback_result = ReviewResult(
             conclusion="pass",
@@ -155,18 +169,47 @@ def review_quality_agent(
             writing_score=20.0,
             compliance_score=18.0,
             logic_score=19.0,
-            modification_suggestions=["评审服务异常，建议人工复核"],
+            modification_items=[
+                ModificationItem(
+                    issue_id="fallback_001",
+                    section="technical_solution",
+                    issue_type="logic",
+                    severity="minor",
+                    description="评审服务异常",
+                    suggestion="建议人工复核"
+                )
+            ],
             target_agent=None,
             review_comment="大模型评审服务异常，自动通过，请人工复核",
         )
         return fallback_result, token_usage
+
+    # 校准合格分
+    result.compliance_score = calculate_compliance_score(compliance_report.issues) / 4
+
+    if result.conclusion == "reject":
+      compliance_issue_count = sum(1 for item in result.modification_items  if item.issue_type == "format")
+      total_issues = len(result.modification_items)
+      if total_issues > 0 and compliance_issue_count / total_issues > 0.6:
+        result.target_agent = "compliance"
+      else:
+        result.target_agent = "writer"
+
 
     # 超过最大迭代次数，强制通过（避免死循环）
     if iteration_count >= MAX_ITERATION_COUNT and result.conclusion == "reject":
         logger.info("已达最大迭代次数%d，强制通过", MAX_ITERATION_COUNT)
         result.conclusion = "pass"
         result.review_comment += f"（已达最大迭代次数{MAX_ITERATION_COUNT}轮，强制通过，建议人工复核）"
-        result.modification_suggestions.append(f"已迭代{MAX_ITERATION_COUNT}轮，仍有优化空间，建议人工复核")
+        result.modification_items.append(
+            ModificationItem(
+                section="overall",
+                issue_type="logic",
+                severity="minor",
+                description=f"已迭代{MAX_ITERATION_COUNT}轮，仍有优化空间",
+                suggestion="建议人工复核优化"
+            )
+        )
 
     logger.info("质量评审完成，结论: %s, 总分: %.1f", result.conclusion, result.overall_score)
     return result, token_usage

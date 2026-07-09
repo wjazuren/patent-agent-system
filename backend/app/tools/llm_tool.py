@@ -53,6 +53,9 @@ def _extract_token_usage(response) -> dict[str, int]:
     """
     从LangChain返回结果中提取Token用量
     统一格式，不同模型返回结构可能不同，这里做兼容处理
+    使用langchain的封装格式来实现各个模型的兼容
+    input:response大模型的完整返回结果
+
     """
     usage = {"prompt_tokens": 0, "completion_tokens": 0}
     metadata = getattr(response, "response_metadata", None) or {}
@@ -130,6 +133,7 @@ def call_llm_structured(
     token_usage = _extract_token_usage(response)
 
     # 获取原始文本内容（兼容字符串和列表两种格式）
+    # 如果是列表，则需要将每个元素转换为字符串并拼接
     raw_text = getattr(response, "content", "")
     if isinstance(raw_text, list):
         raw_text = "".join(
@@ -145,6 +149,7 @@ def call_llm_structured(
         return None, token_usage
 
     try:
+        # 解析JSON
         data = json.loads(json_text)
         # 用Pydantic模型校验并实例化
         result = output_model_class(**data)
