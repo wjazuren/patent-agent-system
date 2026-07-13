@@ -26,6 +26,7 @@ from app.agents.requirement_agent import process_requirement
 from app.agents.review_agent import review_quality_agent
 from app.agents.search_agent import search_prior_art_agent
 from app.agents.writer_agent import write_docket_agent
+from app.agents.diagram_agent import generate_patent_diagrams
 from app.config import MAX_ITERATION_COUNT
 from app.models.schemas import (
     ComplianceReport,
@@ -155,6 +156,38 @@ def node_writer(state: dict) -> dict:
     }
 
 
+def node_draw_diagram(state: dict) -> dict:
+    """
+    节点7：专利附图自动生成节点
+    输入：draft_docket 交底书初稿
+    输出：回填带附图信息的交底书、附图路径、附图说明、更新日志
+    """
+    logger.info("=== 执行节点：专利附图自动生成 ===")
+    
+    docket = state.draft_docket
+    if isinstance(docket, dict):
+        docket = PatentDocket(**docket)
+    
+    doc_id = state.request_id
+    
+    # 调用附图生成Agent
+    updated_docket, usage = generate_patent_diagrams(docket, doc_id)
+
+    # 统计绘图环节token消耗
+    token_usage = state.token_usage
+    if isinstance(token_usage, dict):
+        token_usage = TokenUsage(**token_usage)
+    # token_usage.diagram_prompt += usage.get("prompt_tokens", 0)
+    # token_usage.diagram_completion += usage.get("completion_tokens", 0)
+
+    logs = state.process_logs
+    logs.append(f"[专利附图生成] 完成，已生成架构图+流程图，附图说明已回填")
+
+    return {
+        "draft_docket": updated_docket,
+        "token_usage": token_usage,
+        "process_logs": logs,
+    }
 def node_compliance(state: dict) -> dict:
     """
     节点4：合规校验
@@ -346,6 +379,7 @@ def build_patent_graph():
     builder.add_node("compliance", node_compliance)
     builder.add_node("review", node_review)
     builder.add_node("output", node_output)
+    builder.add_node("draw_diagram", node_draw_diagram)
 
     # 设置入口节点
     builder.set_entry_point("requirement")
@@ -353,7 +387,8 @@ def build_patent_graph():
     # 正向边：按顺序流转
     builder.add_edge("requirement", "search")
     builder.add_edge("search", "writer")
-    builder.add_edge("writer", "compliance")
+    builder.add_edge("writer", "draw_diagram")
+    builder.add_edge("draw_diagram", "compliance")
     builder.add_edge("compliance", "review")
 
     # 条件边：评审后根据结果决定走向

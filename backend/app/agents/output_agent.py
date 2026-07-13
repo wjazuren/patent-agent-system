@@ -27,18 +27,24 @@ from app.models.schemas import (
 )
 
 logger = logging.getLogger(__name__)
-
-
+STATIC_URL_PREFIX = "/static/diagrams"
+def local_path_to_web_path(local_path: str) -> str:
+    """
+    本地物理路径 转为 前端静态访问URL
+    示例：./output/diagrams\req_xxx\architecture.svg  --> /static/diagrams/req_xxx/architecture.svg
+    """
+    if not local_path:
+        return ""
+    # 统一分隔符
+    std_path = local_path.replace("\\", "/")
+    # 替换根目录
+    return std_path.replace("./output/diagrams", STATIC_URL_PREFIX)
 def _generate_markdown(
     docket: PatentDocket,
     prior_art: PriorArtReport,
     compliance: ComplianceReport | None,
     review: ReviewResult | None,
 ) -> str:
-    """
-    将结构化数据渲染成标准Markdown格式
-    这是最终交付给用户的文档内容
-    """
     # 风险等级显示文本
     risk_text_map = {
         "low": "🟢 低风险",
@@ -71,6 +77,20 @@ def _generate_markdown(
         ])
     else:
         compliance_md = "无合规问题"
+
+     # ========== 拼接图片Markdown链接 在这里统一转换路径 ==========
+    img_md_content = ""
+    if hasattr(docket, "diagram_paths") and docket.diagram_paths:
+        arch_local = docket.diagram_paths.get("architecture", "")
+        flow_local = docket.diagram_paths.get("flow", "")
+        # 本地路径转网页静态路径
+        arch_img = local_path_to_web_path(arch_local)
+        flow_img = local_path_to_web_path(flow_local)
+
+        if arch_img:
+            img_md_content += f"\n![{docket.invention_name}系统架构图]({arch_img})\n\n"
+        if flow_img:
+            img_md_content += f"\n![{docket.invention_name}方法流程图]({flow_img})\n\n"
 
     md = f"""# {docket.invention_name}
 
@@ -110,7 +130,7 @@ def _generate_markdown(
 ---
 
 ## 六、附图说明
-{docket.drawing_description if docket.drawing_description else '无'}
+{img_md_content}{docket.drawing_description if docket.drawing_description else '无'}
 
 ---
 

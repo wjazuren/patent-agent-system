@@ -17,12 +17,13 @@ FastAPI 接口层
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field,field_validator
-
+from fastapi.staticfiles import StaticFiles
 from app.models.schemas import PatentState, TokenUsage
 from app.services.graph_service import run_patent_workflow
 from app.services.storage_service import (
@@ -32,6 +33,9 @@ from app.services.storage_service import (
 )
 
 logger = logging.getLogger(__name__)
+DIAGRAM_ROOT = os.path.join(os.getcwd(), "output", "diagrams")
+os.makedirs(DIAGRAM_ROOT, exist_ok=True)
+
 
 # 创建FastAPI应用
 app = FastAPI(
@@ -40,7 +44,8 @@ app = FastAPI(
     version="1.0.0",
 )
 
-
+# 挂载静态路由
+app.mount("/static/diagrams", StaticFiles(directory=DIAGRAM_ROOT), name="diagrams")
 # ==================== 请求响应模型 ====================
 
 class GenerateRequest(BaseModel):

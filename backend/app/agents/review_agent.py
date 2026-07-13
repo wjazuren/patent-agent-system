@@ -203,6 +203,7 @@ def review_quality_agent(
         result.review_comment += f"（已达最大迭代次数{MAX_ITERATION_COUNT}轮，强制通过，建议人工复核）"
         result.modification_items.append(
             ModificationItem(
+                issue_id="fallback_001",
                 section="overall",
                 issue_type="logic",
                 severity="minor",

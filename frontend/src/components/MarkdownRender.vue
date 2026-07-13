@@ -1,67 +1,128 @@
 <template>
-  <!--
-    Markdown渲染组件
-    专门用来渲染交底书的Markdown内容
-    支持代码高亮、自定义样式
-  -->
-  <div class="markdown-render">
-    <div
-      class="markdown-body"
-      v-html="renderedHtml"
-    ></div>
+  <div class="markdown-render" ref="renderWrap">
+    <!-- 专利附图单独展示区域 -->
+    <template v-if="hasDiagram">
+      <PatentImagePreview
+        v-if="safeDiagramPaths.architecture"
+        ref="archImgRef"
+        :img-src="fullImgUrl(safeDiagramPaths.architecture)"
+        :image-title="`图1 ${safeInventionName}系统架构示意图`"
+        class="main-img"
+      />
+      <PatentImagePreview
+        v-if="safeDiagramPaths.flow"
+        :img-src="fullImgUrl(safeDiagramPaths.flow)"
+        :image-title="`图2 ${safeInventionName}方法流程示意图`"
+        class="follow-img"
+        :style="{ width: followImgWidth }"
+      />
+    </template>
+
+    <!-- Markdown正文渲染 -->
+    <div class="markdown-body" v-html="renderedHtml"></div>
   </div>
 </template>
-
 <script setup lang="ts">
-/**
- * Markdown渲染组件逻辑
- * 使用markdown-it解析，配合highlight.js做代码高亮
- */
-import { computed } from 'vue'
+import { computed, ref, onMounted, nextTick, watch } from 'vue'
 import MarkdownIt from 'markdown-it'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css'
+import PatentImagePreview from './PatentImagePreview.vue'
+import { convertStaticImgPath } from '@/utils/markdown'
 
-// 定义props - 使用TS泛型语法，类型安全
 const props = defineProps<{
-  /** Markdown原始内容 */
   content: string
+  inventionName?: string
+  diagramPaths?: Record<string, string>
 }>()
 
-// 创建markdown-it实例
-// 配置：启用html、换行转换、自动链接
+const renderWrap = ref<HTMLDivElement | null>(null)
+const archImgRef = ref<InstanceType<typeof PatentImagePreview> | null>(null)
+// 基准最大宽度（和样式统一）
+const BASE_MAX_WIDTH = 680
+// 图2动态宽度
+const followImgWidth = ref('100%')
+
+const safeDiagramPaths = computed(() => props.diagramPaths ?? {})
+const safeInventionName = computed(() => props.inventionName ?? '')
+const hasDiagram = computed(() => Object.keys(safeDiagramPaths.value).length > 0)
+
+const fullImgUrl = (url: string) => {
+  const base = import.meta.env.VITE_API_BASE_URL
+  return url.startsWith('/static/') ? `${base}${url}` : url
+}
+
+// 计算缩放比例并赋值给图2
+const calcScaleRatio = async () => {
+  await nextTick()
+  if (!archImgRef.value) return
+  // 获取图1实际渲染宽度
+  const archDom = archImgRef.value.$el as HTMLElement
+  const realWidth = archDom?.offsetWidth || BASE_MAX_WIDTH
+  // 缩放倍数 = 实际宽度 / 基准最大宽度
+  const scaleRatio = realWidth / BASE_MAX_WIDTH
+  // 图2设置同比例宽度
+  followImgWidth.value = `${scaleRatio * 100}%`
+}
+
+// 监听附图出现、窗口变化重新计算
+watch(hasDiagram, (val) => {
+  if(val) calcScaleRatio()
+}, { immediate: true })
+
+onMounted(() => {
+  calcScaleRatio()
+  window.addEventListener('resize', calcScaleRatio)
+})
+
 const md: MarkdownIt = new MarkdownIt({
-  html: true,        // 允许HTML标签
-  linkify: true,     // 自动识别链接
-  typographer: true, // 美化符号
-  breaks: true,      // 换行符转<br>
-  // 代码高亮配置
+  html: true,
+  linkify: true,
+  typographer: true,
+  breaks: true,
   highlight: function (str: string, lang: string): string {
     if (lang && hljs.getLanguage(lang)) {
       try {
         return '<pre class="hljs"><code>' +
           hljs.highlight(str, { language: lang, ignoreIllegals: true }).value +
           '</code></pre>'
-      } catch (__) {
-        // 高亮失败，继续走兜底逻辑
-      }
+      } catch (__) {}
     }
-    // 没有语言或识别失败，返回转义后的纯文本
     return '<pre class="hljs"><code>' + md.utils.escapeHtml(str) + '</code></pre>'
   }
 })
 
-// 计算渲染后的HTML
 const renderedHtml = computed<string>(() => {
   if (!props.content) return ''
-  return md.render(props.content)
+  let fixMd = convertStaticImgPath(props.content)
+  let htmlStr = md.render(fixMd)
+  htmlStr = htmlStr.replace(/<img\s+src=/gi, '<img style="max-width:680px;width:100%;height:auto;margin:12px auto;display:block;" src=')
+  return htmlStr
 })
 </script>
 
 <style lang="scss" scoped>
-// Markdown样式已经在global.scss里定义了
-// 这里可以加一些组件特有的样式
 .markdown-render {
   width: 100%;
+}
+.markdown-body {
+  width: 100%;
+  overflow-x: hidden;
+}
+
+// 图1 固定基准最大宽度
+:deep(.main-img img) {
+  max-width: 680px;
+  width: 100%;
+  height: auto;
+  display: block;
+  margin: 10px auto;
+}
+
+// 图2 只保留基础布局，宽由JS同比例控制
+:deep(.follow-img img) {
+  height: auto;
+  display: block;
+  margin: 10px auto;
 }
 </style>

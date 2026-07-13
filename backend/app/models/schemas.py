@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pydoc import classname
-from typing import Optional, List
+from typing import Optional, List,Dict
 from pydantic import BaseModel, Field,field_validator  
 
 
@@ -90,6 +90,7 @@ class PatentDocket(BaseModel):
     claims_draft: str = Field(..., description="权利要求初稿")
     # 核心术语解释
     key_terms_explanation: List[str] = Field(default_factory=list, description="核心术语解释")
+    diagram_paths: Optional[Dict[str, str]] = Field(default_factory=dict, description="附图前端访问路径")
 
     @field_validator("beneficial_effects","claims_draft")
     @classmethod
