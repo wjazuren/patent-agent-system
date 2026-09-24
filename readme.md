@@ -37,7 +37,7 @@
 │  缓存工具 / 格式校验工具 / Token统计工具              │
 ├─────────────────────────────────────────────────────┤
 │  数据存储层：多介质存储体系                            │
-│  Chroma 向量库 / Redis 缓存 / SQLite 持久化          │
+│  PostgreSQL + pgvector 统一存储 / Redis 缓存          │
 └─────────────────────────────────────────────────────┘
 ```
 
@@ -76,9 +76,8 @@
 ### 数据存储与中间件
 | 技术领域 | 选型方案 | 选型说明 |
 |:---|:---|:---|
-| 向量数据库 | **Chroma** | 轻量嵌入式向量库，支持语义检索，无需独立部署服务，项目开箱即可运行 |
+| 统一数据存储 | **PostgreSQL + pgvector** | 在关系表中统一管理专利元数据、父子 Chunk、业务文档、检索和评估结果，并通过 HNSW 完成余弦向量检索 |
 | 缓存中间件 | **Redis** | 分层缓存高频检索结果、模板数据，大幅提升响应速度，降低大模型调用成本 |
-| 持久化存储 | **SQLite** | 轻量文件型关系数据库，存储历史文档、系统统计数据，无需额外部署数据库服务 |
 
 ## 📁 项目目录结构
 ```
@@ -129,15 +128,21 @@ patent-agent-system/
 ### 环境要求
 - Python 3.10 及以上版本
 - Node.js 18 及以上版本
+- PostgreSQL 16 + pgvector（可直接使用项目内 Docker Compose）
 - Redis 6.0+（可选，用于缓存加速，不开启也可正常运行）
 
 ### 一、后端服务部署
-1. **进入后端目录**
+1. **启动 PostgreSQL + pgvector**
 ```bash
-cd patent_agent_system
+docker compose up -d postgres
 ```
 
-2. **创建虚拟环境并安装依赖**
+2. **进入后端目录**
+```bash
+cd backend
+```
+
+3. **创建虚拟环境并安装依赖**
 ```bash
 # 创建虚拟环境
 python -m venv venv
@@ -149,13 +154,13 @@ venv\Scripts\activate
 source venv/bin/activate
 
 # 安装全部依赖
-pip install -r requirements.txt
+pip install -r app/requirements.txt
 ```
 
-3. **配置环境变量**
+4. **配置环境变量**
 ```bash
 # 复制环境变量模板
-cp .env.example .env
+cp app/.env.example app/.env
 ```
 编辑 `.env` 文件，填入你的大模型 API 密钥等配置：
 ```env
@@ -165,14 +170,20 @@ LLM_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
 LLM_MODEL=qwen3.6-plus
 
 # 其他配置可保持默认
+POSTGRES_DSN=postgresql://postgres:postgres@127.0.0.1:5432/patent_agent
 ```
 
-4. **初始化知识库（首次运行执行一次即可）**
+5. **初始化知识库（首次运行执行一次即可）**
 ```bash
-python init_knowledge_base.py
+python -m app.script.init_knowledge
 ```
 
-5. **启动后端服务**
+导入清洗后的专利 SQLite 数据并重建父子 Chunk（可选）：
+```bash
+python -m app.script.build_parent_rag_data --source ./data/patent_meta.db --clear
+```
+
+6. **启动后端服务**
 ```bash
 uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
@@ -181,7 +192,7 @@ uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
 ### 二、前端页面部署
 1. **进入前端目录**
 ```bash
-cd ../patent-agent-frontend
+cd ../frontend
 ```
 
 2. **安装项目依赖**

@@ -4,6 +4,7 @@ BACKEND_ROOT = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(BACKEND_ROOT))
 import numpy as np
 from app.tools.rag_tool import search_prior_art_hybrid
+from app.db.repositories import record_evaluation
 import json
 
 def calculate_recall_precision(
@@ -50,7 +51,7 @@ def batch_evaluate_retrieval(test_queries: list[dict]) -> tuple[float, float]:
     for sample in test_queries:
         query_text = sample["query"]
         gt_list = sample["gt_patents"]
-        # 执行完整混合检索：BM25+Chroma粗召回 + Reranker精排
+        # 执行完整混合检索：BM25 + pgvector HNSW 粗召回 + Reranker 精排
         pred_result, _ = search_prior_art_hybrid(query_text)
         # 计算单条指标
         r, p = calculate_recall_precision(pred_result, gt_list)
@@ -59,8 +60,11 @@ def batch_evaluate_retrieval(test_queries: list[dict]) -> tuple[float, float]:
         print(f"【Query】{query_text[:40]}... | Recall={r:.2%}, Precision={p:.2%}")
 
     # 全部样本取算术平均，得到整体指标
-    avg_recall = float(np.mean(all_recall))
-    avg_precision = float(np.mean(all_precision))
+    avg_recall = float(np.mean(all_recall)) if all_recall else 0.0
+    avg_precision = float(np.mean(all_precision)) if all_precision else 0.0
+    details = {"sample_count": len(test_queries), "top_k": 5}
+    record_evaluation("recall@5", avg_recall, details=details)
+    record_evaluation("precision@5", avg_precision, details=details)
     print("\n==================== 批量评测汇总 ====================")
     print(f"测试样本总量：{len(test_queries)}")
     print(f"全局平均召回率Recall@5 = {avg_recall * 100:.1f}%")

@@ -10,6 +10,7 @@ __pycache__/
 
 # 数据库向量库
 *.db
+# 旧版 Chroma 本地数据（迁移完成前保留但不纳入版本控制）
 chroma/
 backend/data/chroma/
 
@@ -18,5 +19,7 @@ node_modules/
 .vite/
 
 # 输出文件
-output/
+backend/output/
 face/
+update/
+frontend/.env

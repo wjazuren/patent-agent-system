@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import List, Optional
 
@@ -31,10 +32,18 @@ from app.services.storage_service import (
     list_documents,
     save_document,
 )
+from app.db.postgres import init_database
 
 logger = logging.getLogger(__name__)
 DIAGRAM_ROOT = os.path.join(os.getcwd(), "output", "diagrams")
 os.makedirs(DIAGRAM_ROOT, exist_ok=True)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """启动时验证数据库连接并确保 pgvector 表结构存在。"""
+    init_database()
+    yield
 
 
 # 创建FastAPI应用
@@ -42,6 +51,7 @@ app = FastAPI(
     title="专利交底书多智能体撰写系统",
     description="基于多Agent协同的专利交底书智能撰写与预审系统",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # 挂载静态路由

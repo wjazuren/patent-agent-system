@@ -42,15 +42,18 @@ REDIS_DEFAULT_TTL_SECONDS: int = int(os.getenv("REDIS_DEFAULT_TTL_SECONDS", "864
 REDIS_PATENT_TTL_SECONDS: int = int(os.getenv("REDIS_PATENT_TTL_SECONDS", "604800"))
 
 
-# ==================== 向量库配置 ====================
-# Chroma向量库持久化路径
-CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", "./data/chroma")
-# 专利知识库集合名称
-CHROMA_PATENT_COLLECTION: str = os.getenv("CHROMA_PATENT_COLLECTION", "patent_prior_art")
-# 模板知识库集合名称
-CHROMA_TEMPLATE_COLLECTION: str = os.getenv("CHROMA_TEMPLATE_COLLECTION", "patent_templates")
-# 审查规范集合名称
-CHROMA_RULES_COLLECTION: str = os.getenv("CHROMA_RULES_COLLECTION", "patent_rules")
+# ==================== PostgreSQL / pgvector 配置 ====================
+POSTGRES_DSN: str = os.getenv(
+    "POSTGRES_DSN",
+    "postgresql://postgres:postgres@127.0.0.1:5432/patent_agent",
+)
+POSTGRES_SCHEMA: str = os.getenv("POSTGRES_SCHEMA", "patent_agent")
+# BGE-M3 的向量维度为 1024；更换嵌入模型时需同步重建向量列。
+VECTOR_DIMENSION: int = int(os.getenv("VECTOR_DIMENSION", "1024"))
+PGVECTOR_HNSW_M: int = int(os.getenv("PGVECTOR_HNSW_M", "16"))
+PGVECTOR_EF_CONSTRUCTION: int = int(os.getenv("PGVECTOR_EF_CONSTRUCTION", "64"))
+PGVECTOR_EF_SEARCH: int = int(os.getenv("PGVECTOR_EF_SEARCH", "100"))
+EMBEDDING_MODEL_PATH: str = os.getenv("EMBEDDING_MODEL_PATH", r"D:\models\bge-m3")
 
 
 # ==================== 系统配置 ====================
@@ -58,8 +61,6 @@ CHROMA_RULES_COLLECTION: str = os.getenv("CHROMA_RULES_COLLECTION", "patent_rule
 MAX_ITERATION_COUNT: int = int(os.getenv("MAX_ITERATION_COUNT", "3"))
 # 日志级别
 LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
-# SQLite数据库路径
-SQLITE_DB_PATH: str = os.getenv("SQLITE_DB_PATH", "./data/patent_system.db")
 
 logging.basicConfig(
     level=LOG_LEVEL,
